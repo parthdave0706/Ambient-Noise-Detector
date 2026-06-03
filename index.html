@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ambient Noise Detector</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #fff;
+    color: #1a1a1a;
+    padding: 24px 16px 48px;
+    max-width: 520px;
+    margin: 0 auto;
+  }
+  .center { text-align: center; }
+  .title { font-size: 22px; font-weight: 500; margin-bottom: 8px; }
+  .sub { font-size: 15px; color: #666; line-height: 1.6; margin-bottom: 1.5rem; }
+  .screen { display: none; }
+  button {
+    cursor: pointer; font-family: inherit; font-size: 14px;
+    padding: 8px 20px; border-radius: 8px; border: 1px solid #ccc;
+    background: transparent; color: #1a1a1a; transition: background .12s;
+  }
+  button:hover { background: #f5f5f5; }
+  button.primary { background: #185FA5; color: #E6F1FB; border-color: #185FA5; }
+  button.primary:hover { background: #0C447C; }
+  .btn-row { display: flex; gap: 10px; justify-content: center; margin-top: 1rem; flex-wrap: wrap; }
+
+  /* Measuring screen */
+  #db-big { font-size: 64px; font-weight: 500; line-height: 1; margin-bottom: 4px; }
+  #db-unit { font-size: 14px; color: #888; margin-bottom: 12px; }
+  #label-badge {
+    display: inline-block; padding: 5px 18px; border-radius: 20px;
+    font-size: 13px; font-weight: 500; margin-bottom: 1.5rem;
+  }
+  #timer-txt { font-size: 13px; color: #888; margin-bottom: 1.5rem; }
+  .wave-wrap {
+    height: 80px; background: #f7f7f7; border-radius: 8px;
+    margin-bottom: 1.25rem; overflow: hidden; position: relative;
+  }
+  #wave-canvas { width: 100%; height: 80px; display: block; }
+
+  .benchmarks { margin-bottom: 1.5rem; }
+  .bm-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .bm-label { font-size: 12px; color: #888; width: 120px; flex-shrink: 0; }
+  .bm-track { flex: 1; height: 4px; background: #eee; border-radius: 2px; }
+  .bm-fill { height: 100%; border-radius: 2px; }
+  .bm-val { font-size: 12px; color: #888; width: 40px; text-align: right; }
+
+  /* Result screen */
+  .verdict-box {
+    background: #f7f7f7; border-radius: 12px; padding: 1.25rem;
+    margin-bottom: 1.5rem; text-align: center;
+  }
+  .verdict-icon { font-size: 32px; margin-bottom: 8px; }
+  .verdict-title { font-size: 16px; font-weight: 500; margin-bottom: 6px; }
+  .verdict-body { font-size: 14px; color: #555; line-height: 1.6; }
+  .stat-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 10px; margin-bottom: 1.5rem;
+  }
+  .stat { background: #f7f7f7; border-radius: 8px; padding: 1rem; text-align: center; }
+  .stat-label { font-size: 12px; color: #888; margin-bottom: 4px; }
+  .stat-val { font-size: 22px; font-weight: 500; }
+  .ctx-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 0; border-bottom: 1px solid #f0f0f0;
+  }
+  .ctx-row:last-child { border-bottom: none; }
+  .ctx-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .ctx-place { font-size: 13px; color: #555; flex: 1; text-align: left; }
+  .ctx-db { font-size: 13px; font-weight: 500; }
+  .you-tag {
+    font-size: 11px; background: #E6F1FB; color: #0C447C;
+    border-radius: 20px; padding: 1px 8px;
+  }
+</style>
+</head>
+<body>
+
+<!-- INTRO -->
+<div id="screen-intro" class="screen center">
+  <p class="title">Ambient noise detector</p>
+  <p class="sub">Find out how loud your environment really is.<br>We'll measure for 10 seconds and give you a full readout.</p>
+  <p style="font-size:13px;color:#aaa;margin-bottom:1.5rem">Your browser will ask for microphone access.<br>No audio is recorded or stored — only volume levels are processed.</p>
+  <div class="btn-row">
+    <button class="primary" id="btn-start">&#127908; Start measuring</button>
+  </div>
+</div>
+
+<!-- MEASURING -->
+<div id="screen-measuring" class="screen center">
+  <p class="title" style="margin-bottom:4px">Measuring...</p>
+  <p id="timer-txt">Analysing for <span id="t-count">10</span> seconds</p>
+  <div id="db-big">—</div>
+  <div id="db-unit">dB (estimated)</div>
+  <div><span id="label-badge">&nbsp;</span></div>
+  <div class="wave-wrap">
+    <canvas id="wave-canvas" width="480" height="80"></canvas>
+  </div>
+  <div class="benchmarks">
+    <div class="bm-row"><span class="bm-label">Library</span><div class="bm-track"><div class="bm-fill" style="width:30%;background:#9FE1CB"></div></div><span class="bm-val">30 dB</span></div>
+    <div class="bm-row"><span class="bm-label">Quiet office</span><div class="bm-track"><div class="bm-fill" style="width:45%;background:#5DCAA5"></div></div><span class="bm-val">45 dB</span></div>
+    <div class="bm-row"><span class="bm-label">Normal convo</span><div class="bm-track"><div class="bm-fill" style="width:60%;background:#1D9E75"></div></div><span class="bm-val">60 dB</span></div>
+    <div class="bm-row"><span class="bm-label">Busy restaurant</span><div class="bm-track"><div class="bm-fill" style="width:75%;background:#EF9F27"></div></div><span class="bm-val">75 dB</span></div>
+    <div class="bm-row"><span class="bm-label">City traffic</span><div class="bm-track"><div class="bm-fill" style="width:85%;background:#E24B4A"></div></div><span class="bm-val">85 dB</span></div>
+    <div id="you-bm-row" class="bm-row" style="display:none">
+      <span class="bm-label" style="color:#1a1a1a;font-weight:500">Your space</span>
+      <div class="bm-track"><div class="bm-fill" id="you-fill" style="width:0%;background:#185FA5"></div></div>
+      <span id="you-val" class="bm-val" style="color:#185FA5;font-weight:500">—</span>
+    </div>
+  </div>
+</div>
+
+<!-- RESULT -->
+<div id="screen-result" class="screen">
+  <div class="verdict-box">
+    <div class="verdict-icon" id="res-icon"></div>
+    <div class="verdict-title" id="res-title"></div>
+    <div class="verdict-body" id="res-body"></div>
+  </div>
+  <div class="stat-grid">
+    <div class="stat"><div class="stat-label">Average</div><div class="stat-val" id="res-avg">—</div></div>
+    <div class="stat"><div class="stat-label">Peak</div><div class="stat-val" id="res-peak">—</div></div>
+    <div class="stat"><div class="stat-label">WHO rating</div><div class="stat-val" id="res-who">—</div></div>
+  </div>
+  <div id="ctx-list"></div>
+  <div class="btn-row">
+    <button id="btn-share">&#8599; Copy result</button>
+    <button class="primary" id="btn-retry">&#8635; Measure again</button>
+  </div>
+</div>
+
+<script>
+  function show(id) {
+    ['screen-intro','screen-measuring','screen-result'].forEach(s => {
+      document.getElementById(s).style.display = s === id ? 'block' : 'none';
+    });
+  }
+
+  const CONTEXTS = [
+    {label:'Soundproof studio', db:20},
+    {label:'Whisper', db:25},
+    {label:'Library', db:30},
+    {label:'Quiet bedroom', db:35},
+    {label:'Quiet office', db:45},
+    {label:'Normal conversation', db:60},
+    {label:'Busy restaurant', db:75},
+    {label:'City traffic', db:85},
+    {label:'Power mower', db:90},
+    {label:'Concert', db:110},
+  ];
+
+  const LABELS = [
+    {max:30,  text:'Dead quiet',       bg:'#E1F5EE', tc:'#085041'},
+    {max:40,  text:'Very quiet',       bg:'#EAF3DE', tc:'#27500A'},
+    {max:50,  text:'Quiet',            bg:'#EAF3DE', tc:'#27500A'},
+    {max:63,  text:'Moderate',         bg:'#E6F1FB', tc:'#0C447C'},
+    {max:72,  text:'Noticeable',       bg:'#FAEEDA', tc:'#633806'},
+    {max:82,  text:'Loud',             bg:'#FAEEDA', tc:'#633806'},
+    {max:95,  text:'Very loud',        bg:'#FCEBEB', tc:'#A32D2D'},
+    {max:999, text:'Dangerously loud', bg:'#FCEBEB', tc:'#A32D2D'},
+  ];
+
+  function getLabel(db) { return LABELS.find(l => db <= l.max) || LABELS[LABELS.length-1]; }
+  function rmsToDb(rms) { return rms < 0.00001 ? 0 : Math.round(20 * Math.log10(rms) + 90); }
+
+  let audioCtx, analyser, source, rafID, timerID;
+  let dbSamples = [], waveHistory = [], measuring = false;
+
+  const canvas = document.getElementById('wave-canvas');
+  const wCtx = canvas.getContext('2d');
+  const CW = 480, CH = 80;
+
+  document.getElementById('btn-start').addEventListener('click', async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 2048;
+      source = audioCtx.createMediaStreamSource(stream);
+      source.connect(analyser);
+      dbSamples = []; waveHistory = []; measuring = true;
+      show('screen-measuring');
+      document.getElementById('you-bm-row').style.display = 'flex';
+      startMeasuring();
+    } catch(e) {
+      alert('Microphone access was denied. Please allow microphone access in your browser and try again.');
+    }
+  });
+
+  document.getElementById('btn-retry').addEventListener('click', () => {
+    if (audioCtx) audioCtx.close();
+    cancelAnimationFrame(rafID); clearInterval(timerID);
+    dbSamples = []; waveHistory = []; measuring = false;
+    show('screen-intro');
+  });
+
+  function startMeasuring() {
+    let countdown = 10;
+    document.getElementById('t-count').textContent = countdown;
+    timerID = setInterval(() => {
+      countdown--;
+      document.getElementById('t-count').textContent = Math.max(0, countdown);
+      if (countdown <= 0) { clearInterval(timerID); finishMeasuring(); }
+    }, 1000);
+    drawLoop();
+  }
+
+  function drawLoop() {
+    const buf = new Float32Array(analyser.fftSize);
+    analyser.getFloatTimeDomainData(buf);
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+    const rms = Math.sqrt(sum / buf.length);
+    const db = rmsToDb(rms);
+    if (measuring) dbSamples.push(db);
+
+    document.getElementById('db-big').textContent = db;
+    const lbl = getLabel(db);
+    const badge = document.getElementById('label-badge');
+    badge.textContent = lbl.text;
+    badge.style.background = lbl.bg;
+    badge.style.color = lbl.tc;
+
+    const pct = Math.min(100, Math.round((db / 100) * 100));
+    document.getElementById('you-fill').style.width = pct + '%';
+    document.getElementById('you-val').textContent = db + ' dB';
+
+    waveHistory.push(rms);
+    if (waveHistory.length > CW) waveHistory.shift();
+    drawWave();
+    if (measuring) rafID = requestAnimationFrame(drawLoop);
+  }
+
+  function drawWave() {
+    wCtx.clearRect(0, 0, CW, CH);
+    wCtx.strokeStyle = '#185FA5';
+    wCtx.lineWidth = 1.5;
+    wCtx.beginPath();
+    const mid = CH / 2;
+    waveHistory.forEach((v, i) => {
+      const h = Math.min(mid - 2, v * mid * 18);
+      const x = i * (CW / Math.max(waveHistory.length, 1));
+      wCtx.moveTo(x, mid - h);
+      wCtx.lineTo(x, mid + h);
+    });
+    wCtx.stroke();
+  }
+
+  function finishMeasuring() {
+    measuring = false;
+    cancelAnimationFrame(rafID);
+    if (audioCtx) audioCtx.close();
+
+    const avg = Math.round(dbSamples.reduce((a,b) => a+b, 0) / Math.max(dbSamples.length, 1));
+    const peak = Math.round(Math.max(...dbSamples));
+    const who = avg < 55 ? 'Safe' : avg < 65 ? 'Caution' : 'At risk';
+
+    const verdicts = [
+      {max:35,  icon:'🌙', title:'Your space is whisper quiet',   body:`At ${avg} dB, your environment is quieter than most bedrooms. Ideal for deep work, sleep, or recording. WHO recommends below 30 dB for sleeping areas.`},
+      {max:50,  icon:'📚', title:'Library-level calm',             body:`At ${avg} dB, you're in comfortable territory — comparable to a quiet office. Great for focus and concentration.`},
+      {max:63,  icon:'🏠', title:'Normal indoor environment',      body:`At ${avg} dB, your space is typical for a home or office. No concerns — comfortable for conversation and focused work.`},
+      {max:75,  icon:'🍽️', title:'Noticeably busy',               body:`At ${avg} dB, you're approaching restaurant-level noise. Fine for short periods, but extended exposure may cause fatigue. Consider noise-cancelling headphones.`},
+      {max:85,  icon:'🚗', title:'Street-level noise',             body:`At ${avg} dB, your environment is as loud as city traffic. WHO advises limiting exposure above 70 dB. Better insulation or a white noise machine could help.`},
+      {max:999, icon:'⚠️', title:'Dangerously loud',               body:`At ${avg} dB, you're above safe exposure limits. Prolonged exposure above 85 dB causes hearing damage. Use ear protection or move to a quieter space.`},
+    ];
+    const v = verdicts.find(x => avg <= x.max) || verdicts[verdicts.length-1];
+    document.getElementById('res-icon').textContent = v.icon;
+    document.getElementById('res-title').textContent = v.title;
+    document.getElementById('res-body').textContent = v.body;
+    document.getElementById('res-avg').textContent = avg + ' dB';
+    document.getElementById('res-peak').textContent = peak + ' dB';
+    const whoEl = document.getElementById('res-who');
+    whoEl.textContent = who;
+    whoEl.style.color = who === 'Safe' ? '#0F6E56' : who === 'Caution' ? '#BA7517' : '#A32D2D';
+
+    const dotColors = ['#9FE1CB','#5DCAA5','#1D9E75','#0F6E56','#1D9E75','#EF9F27','#EF9F27','#E24B4A','#A32D2D','#791F1F'];
+    const sorted = [...CONTEXTS, {label:'Your space', db:avg, you:true}].sort((a,b) => a.db - b.db);
+    const list = document.getElementById('ctx-list');
+    list.innerHTML = '';
+    sorted.forEach((c, i) => {
+      const row = document.createElement('div');
+      row.className = 'ctx-row';
+      row.innerHTML = `
+        <div class="ctx-dot" style="background:${c.you ? '#185FA5' : dotColors[Math.min(i, dotColors.length-1)]}"></div>
+        <span class="ctx-place">${c.label}</span>
+        <span class="ctx-db" style="color:${c.you ? '#185FA5' : '#1a1a1a'}">${c.db} dB</span>
+        ${c.you ? '<span class="you-tag">you</span>' : ''}
+      `;
+      list.appendChild(row);
+    });
+
+    document.getElementById('btn-share').onclick = () => {
+      const lbl = getLabel(avg);
+      const txt = `My ambient noise level: ${avg} dB (${lbl.text})\nPeak: ${peak} dB | WHO rating: ${who}\nHow loud is your space? thestorywatch.com`;
+      navigator.clipboard.writeText(txt).then(() => {
+        document.getElementById('btn-share').textContent = 'Copied!';
+        setTimeout(() => { document.getElementById('btn-share').textContent = '↗ Copy result'; }, 2000);
+      });
+    };
+
+    show('screen-result');
+  }
+
+  show('screen-intro');
+</script>
+</body>
+</html>
