@@ -220,33 +220,32 @@
     drawLoop();
   }
 
-function drawLoop() {
-  if (!measuring) return;
-  const buf = new Float32Array(analyser.fftSize);
-  analyser.getFloatTimeDomainData(buf);
-  let sum = 0;
-  for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
-  const rms = Math.sqrt(sum / buf.length);
-  const db = rmsToDb(rms);
+  function drawLoop() {
+    if (!measuring) return;
+    const buf = new Float32Array(analyser.fftSize);
+    analyser.getFloatTimeDomainData(buf);
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+    const rms = Math.sqrt(sum / buf.length);
+    const db = rmsToDb(rms);
+    if (measuring) dbSamples.push(db);
 
-  // DEBUG — open browser console to see these
-  console.log('rms:', rms.toFixed(6), '| db:', db, '| ctx state:', audioCtx.state);
+    document.getElementById('db-big').textContent = db;
+    const lbl = getLabel(db);
+    const badge = document.getElementById('label-badge');
+    badge.textContent = lbl.text;
+    badge.style.background = lbl.bg;
+    badge.style.color = lbl.tc;
 
-  if (measuring) dbSamples.push(db);
-  document.getElementById('db-big').textContent = db;
-  const lbl = getLabel(db);
-  const badge = document.getElementById('label-badge');
-  badge.textContent = lbl.text;
-  badge.style.background = lbl.bg;
-  badge.style.color = lbl.tc;
-  const pct = Math.min(100, Math.round((db / 100) * 100));
-  document.getElementById('you-fill').style.width = pct + '%';
-  document.getElementById('you-val').textContent = db + ' dB';
-  waveHistory.push(rms);
-  if (waveHistory.length > CW) waveHistory.shift();
-  drawWave();
-  if (measuring) rafID = requestAnimationFrame(drawLoop);
-}
+    const pct = Math.min(100, Math.round((db / 100) * 100));
+    document.getElementById('you-fill').style.width = pct + '%';
+    document.getElementById('you-val').textContent = db + ' dB';
+
+    waveHistory.push(rms);
+    if (waveHistory.length > CW) waveHistory.shift();
+    drawWave();
+    if (measuring) rafID = requestAnimationFrame(drawLoop);
+  }
 
   function drawWave() {
     wCtx.clearRect(0, 0, CW, CH);
