@@ -178,8 +178,19 @@
   const wCtx = canvas.getContext('2d');
   const CW = 480, CH = 80;
 
+  function safeCloseCtx() {
+    if (audioCtx && audioCtx.state !== 'closed') {
+      audioCtx.close().catch(() => {});
+    }
+    audioCtx = null;
+  }
+
   document.getElementById('btn-start').addEventListener('click', async () => {
+    // Create and resume AudioContext synchronously inside the click gesture
+    // BEFORE any await - critical to avoid Chrome autoplay suspension
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     try {
+      await audioCtx.resume();
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: false,
@@ -188,7 +199,6 @@
         },
         video: false
       });
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       analyser = audioCtx.createAnalyser();
       analyser.fftSize = 2048;
       source = audioCtx.createMediaStreamSource(stream);
@@ -198,14 +208,18 @@
       document.getElementById('you-bm-row').style.display = 'flex';
       startMeasuring();
     } catch(e) {
-      alert('Microphone access was denied. Please allow microphone access in your browser and try again.');
+      console.error('Audio error:', e.name, e.message);
+      safeCloseCtx();
+      alert('Could not access microphone: ' + e.message + '. Please allow microphone access and try again.');
     }
   });
 
   document.getElementById('btn-retry').addEventListener('click', () => {
-    if (audioCtx) audioCtx.close();
-    cancelAnimationFrame(rafID); clearInterval(timerID);
-    dbSamples = []; waveHistory = []; measuring = false;
+    measuring = false;
+    cancelAnimationFrame(rafID);
+    clearInterval(timerID);
+    safeCloseCtx();
+    dbSamples = []; waveHistory = [];
     show('screen-intro');
   });
 
@@ -273,7 +287,7 @@
       : 0;
     const peak = validSamples.length > 0 ? Math.round(Math.max(...validSamples)) : 0;
 
-    if (audioCtx) audioCtx.close();
+    safeCloseCtx();
 
     const who = avg < 55 ? 'Safe' : avg < 65 ? 'Caution' : 'At risk';
 
